@@ -1,0 +1,160 @@
+{
+    "version": 1,
+    "name": "默认台球规则",
+    "settings": {
+        "specialDeckProbability": 0.05,
+        "decayFactor": 0.6,
+        "spinCount": 15,
+        "spinIntervalMs": 80
+    },
+    "rules": [
+        {
+            "id": "no-look",
+            "name": "从不回头",
+            "description": "强者，从不回头看爆炸。你需要背身击球",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "debuff"
+            ],
+            "effect": {}
+        },
+        {
+            "id": "payback",
+            "name": "加倍奉还",
+            "description": "此效果将持续存在且不可叠加。【加倍奉还】生效的回合若出现犯规，则为该回合的效果赋予【复仇】标记。【加倍奉还】被清除时会解除当前场上所有的【复仇】标记。复仇：在【加倍奉还】生效的回合，被赋予【复仇】的效果将自动触发",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "persistent"
+            ],
+            "effect": {
+                "persistent": true,
+                "stackable": false,
+                "triggers": [
+                    {
+                        "on": "foul",
+                        "action": "applyMark",
+                        "mark": "复仇"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ex-nihilo",
+            "name": "无中生有",
+            "description": "你打出一张【无中生有】，立即抽取两张牌，效果叠加",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "draw"
+            ],
+            "effect": {
+                "extraDraws": 2,
+                "stackable": true
+            }
+        },
+        {
+            "id": "off-hand",
+            "name": "非惯用手",
+            "description": "使用非惯用手击球",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "debuff"
+            ],
+            "effect": {}
+        },
+        {
+            "id": "encore",
+            "name": "故技重施",
+            "description": "获得上一回合抽到的效果",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "meta"
+            ],
+            "effect": {
+                "repeatLast": true
+            }
+        },
+        {
+            "id": "duality",
+            "name": "两仪反转",
+            "description": "仅本回合，将黑八与母球互换，黑八视作母球，白球视作黑八。若出现犯规，则按犯规回合的母球结算自由球并按击球回合的母球击打",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "swap"
+            ],
+            "effect": {}
+        },
+        {
+            "id": "flawless",
+            "name": "无懈可击",
+            "description": "你打出一张【无懈可击】，清除所有效果，且本回合正常击球",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "cleanse"
+            ],
+            "effect": {
+                "clearAllEffects": true
+            }
+        },
+        {
+            "id": "dragon-ball",
+            "name": "天降龙珠",
+            "description": "仅本回合，将黑八视作【龙珠】。龙珠：一种可被任意玩家击打的目标球，若打进龙珠则【召唤神龙】。召唤神龙：神龙吞噬任意一颗己方目标球，并用黑八替代其位置，被神龙吞噬的球视作常规进球",
+            "deck": "normal",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "special-ball"
+            ],
+            "effect": {}
+        },
+        {
+            "id": "secret-halo",
+            "name": "秘奥义：杀戮光环",
+            "description": "秘奥义：立刻清除所有其余效果。杀戮光环：获得自由球并获得【裁决】。裁决：连杆时触发，下一回合抽牌后立即打出一张【无懈可击】，随后立即获得【裁决】",
+            "deck": "special",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "ultimate",
+                "persistent"
+            ],
+            "effect": {
+                "clearAllEffects": true,
+                "persistent": true
+            }
+        },
+        {
+            "id": "secret-tap-dance",
+            "name": "秘奥义：踢踏舞",
+            "description": "秘奥义：立刻清除所有其余效果。踢踏舞：此效果将持续存在，至多6回合；效果存在期间跳过抽卡阶段，且玩家必须在t=6秒内击球，随后t=t-1；若未能达成，则清除【踢踏舞】并记为犯规",
+            "deck": "special",
+            "weight": 1,
+            "enabled": true,
+            "tags": [
+                "ultimate",
+                "persistent",
+                "timer"
+            ],
+            "effect": {
+                "clearAllEffects": true,
+                "persistent": true,
+                "maxTurns": 6,
+                "timerSeconds": 6
+            }
+        }
+    ]
+}

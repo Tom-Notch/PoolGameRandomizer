@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PoolGameRandomizer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎯 随机台球模拟器 🎯</h1>
+
+      <div class="result-area">
+        <div id="result" class="result">准备开球...</div>
+        <div id="description" class="description">点击下方按钮开始游戏</div>
+      </div>
+
+      <button id="drawButton" class="draw-button">下一杆</button>
+
+      <h3>当前生效（持续效果）</h3>
+      <div class="active-effects" id="activeEffects">
+        <div class="active-empty">暂无持续效果</div>
+      </div>
+
+      <h3>概率分布</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>选项</th>
+            <th>牌堆</th>
+            <th>当前概率</th>
+          </tr>
+        </thead>
+        <tbody id="probabilitiesTable"></tbody>
+      </table>
+
+      <h3>历史记录</h3>
+      <div class="history-container" id="historyContainer">
+        <div class="history-item"><span>暂无历史记录</span></div>
+      </div>
+
+      <div class="button-group">
+        <button id="resetButton" class="reset-button">重置概率</button>
+        <button id="editorButton" class="editor-button">规则编辑器</button>
+      </div>
+
+      <!-- Rule editor: add rules anytime, edit complex effects, import/export -->
+      <div id="editorPanel" class="editor-panel" style="display: none">
+        <div class="editor-tabs">
+          <button class="tab-button active" data-tab="form">表单编辑</button>
+          <button class="tab-button" data-tab="json">JSON 编辑</button>
+        </div>
+
+        <section id="tabForm" class="tab-pane">
+          <div class="form-group">
+            <label>全局设置</label>
+            <div class="settings-grid">
+              <label class="inline"
+                >特殊牌堆概率
+                <input
+                  type="number"
+                  id="setSpecialProb"
+                  step="0.01"
+                  min="0"
+                  max="1"
+              /></label>
+              <label class="inline"
+                >衰减系数
+                <input
+                  type="number"
+                  id="setDecay"
+                  step="0.05"
+                  min="0"
+                  max="1"
+              /></label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="rules-header">
+              <label>规则列表</label>
+              <button id="addRuleButton" class="small-button">+ 新增规则</button>
+            </div>
+            <div id="rulesEditorList"></div>
+          </div>
+        </section>
+
+        <section id="tabJson" class="tab-pane" style="display: none">
+          <p class="hint">
+            直接编辑整套规则的 JSON。schema 见
+            <a href="README.md">README</a>。点击「应用 JSON」校验并生效。
+          </p>
+          <textarea id="jsonEditor" spellcheck="false"></textarea>
+          <button id="applyJsonButton" class="small-button">应用 JSON</button>
+          <span id="jsonStatus" class="json-status"></span>
+        </section>
+
+        <div class="editor-actions">
+          <button id="saveRulesButton" class="default-button">保存并生效</button>
+          <button id="exportButton" class="small-button">导出 JSON</button>
+          <button id="importButton" class="small-button">导入 JSON</button>
+          <button id="restoreDefaultButton" class="small-button">恢复默认</button>
+          <input
+            type="file"
+            id="importFile"
+            accept="application/json,.json"
+            style="display: none"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Template for one rule row in the form editor -->
+    <template id="ruleRowTemplate">
+      <div class="rule-row">
+        <div class="rule-row-head">
+          <input class="rule-name" placeholder="名称" />
+          <select class="rule-deck">
+            <option value="normal">普通牌堆</option>
+            <option value="special">特殊牌堆</option>
+          </select>
+          <input
+            class="rule-weight"
+            type="number"
+            step="0.1"
+            min="0"
+            title="相对权重"
+          />
+          <label class="inline checkbox"
+            ><input type="checkbox" class="rule-enabled" /> 启用</label
+          >
+          <button class="rule-delete small-button danger" title="删除">✕</button>
+        </div>
+        <textarea
+          class="rule-desc"
+          rows="2"
+          placeholder="描述（抽到时展示给玩家）"
+        ></textarea>
+        <details class="rule-advanced">
+          <summary>高级效果（复杂规则）</summary>
+          <div class="effect-grid">
+            <label class="inline checkbox"
+              ><input type="checkbox" class="eff-persistent" /> 持续存在</label
+            >
+            <label class="inline checkbox"
+              ><input type="checkbox" class="eff-stackable" /> 可叠加</label
+            >
+            <label class="inline checkbox"
+              ><input type="checkbox" class="eff-clear" /> 清除所有效果</label
+            >
+            <label class="inline checkbox"
+              ><input type="checkbox" class="eff-repeat" /> 重复上一张</label
+            >
+            <label class="inline"
+              >额外抽牌
+              <input class="eff-extra" type="number" min="0" step="1"
+            /></label>
+            <label class="inline"
+              >持续回合
+              <input class="eff-maxturns" type="number" min="0" step="1"
+            /></label>
+            <label class="inline"
+              >倒计时(秒)
+              <input class="eff-timer" type="number" min="0" step="1"
+            /></label>
+          </div>
+          <label class="block"
+            >customScript （高级：<code>(ctx) =&gt; { ... }</code> 函数体，留空则不用）
+            <textarea
+              class="eff-script"
+              rows="3"
+              spellcheck="false"
+              placeholder="// ctx: { state, addEffect(rule), removeEffect(id), clearEffects(), drawAgain(n), log(msg) }"
+            ></textarea>
+          </label>
+        </details>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
