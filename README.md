@@ -6,18 +6,19 @@
 
 <p align="center">
   <a href="https://github.com/Tom-Notch/PoolGameRandomizer/actions/workflows/pre-commit.yml"><img src="https://github.com/Tom-Notch/PoolGameRandomizer/actions/workflows/pre-commit.yml/badge.svg" alt="pre-commit"></a>
+  <a href="https://github.com/Tom-Notch/PoolGameRandomizer/actions/workflows/test.yml"><img src="https://github.com/Tom-Notch/PoolGameRandomizer/actions/workflows/test.yml/badge.svg" alt="test"></a>
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
 </p>
 
-每杆开球前抽一张“效果牌”，给台球加点花样。原版（poolgamerandomizer.mingfan.uk）把事件、描述、特殊牌写死在几个平行数组里，加规则要改代码。这一版把它换成了**声明式规则引擎**：规则是数据（JSON），可以在页面里随时增删改、导入导出、本地持久化，并且支持带“持续 / 叠加 / 倒计时 / 额外抽牌 / 自定义脚本”等复杂行为的规则。
+每杆开球前抽一张“效果牌”，给台球加点花样。原版（poolgamerandomizer.mingfan.uk）把事件、描述、特殊牌写死在几个平行数组里，加规则要改代码。这一版把它换成了**声明式规则引擎**：规则是数据（JSON），可以在页面里随时增删改、导入导出、本地持久化，并且支持带“持续 / 叠加 / 额外抽牌 / 自定义脚本”等复杂行为的规则。
 
-零构建、纯静态（`index.html` + `styles.css` + `app.js`），直接丢到 GitHub Pages / Cloudflare Pages 就能跑，也能本地双击打开。
+零构建、纯静态（`index.html` + `styles.css` + `engine.js` + `app.js`），直接丢到 GitHub Pages / Cloudflare Pages 就能跑，也能本地双击打开。所有游戏逻辑都在 `engine.js`（不碰 DOM、可单元测试），`app.js` 只负责把它接到页面上。
 
 ## 玩法
 
 - **下一杆**：按当前概率抽一张牌，展示名称与描述。
 - **概率分布**：实时显示每张牌的概率。抽到的普通牌概率会按 `decayFactor` 衰减（默认 ×0.6），让结果更均匀；特殊牌堆按固定概率触发。
-- **当前生效**：持续型效果以“药丸”形式挂在这里，带回合数 / 倒计时，可手动移除。
+- **当前生效**：持续型效果以“药丸”形式挂在这里，带剩余回合数，可手动移除。
 - **重置概率**：恢复初始权重、清空历史与持续效果。
 - **规则编辑器**：表单或 JSON 两种方式编辑规则，保存即生效并存到浏览器 `localStorage`。
 
@@ -57,7 +58,6 @@
 - `persistent` (bool)：抽到后作为持续效果挂到“当前生效”区
 - `stackable` (bool)：持续效果是否可叠加（false 时同名只保留一个）
 - `maxTurns` (int)：持续效果最多存在多少个回合（每次顶层抽牌算一回合，到 0 移除）
-- `timerSeconds` (int)：持续效果附带的倒计时（秒），归零自动移除
 - `extraDraws` (int)：抽到后立即追加抽 N 张（实现“无中生有”）
 - `repeatLast` (bool)：重新施加上一张牌的效果（实现“故技重施”）
 - `clearAllEffects` (bool)：立刻清除所有持续效果（实现“无懈可击”）
@@ -110,6 +110,16 @@ bash scripts/dev-setup.sh   # 安装并启用 pre-commit 钩子
 ```shell
 python3 -m http.server 8000   # 然后打开 http://localhost:8000
 ```
+
+## 测试
+
+引擎逻辑（`engine.js`）有一套零依赖单元测试，用 Node 内置 test runner：
+
+```shell
+node --test        # 或 npm test
+```
+
+CI 在每次 push / PR 上跑测试（`.github/workflows/test.yml`），Pages 部署以测试通过为前提。
 
 ## 部署
 

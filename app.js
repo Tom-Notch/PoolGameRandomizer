@@ -1,146 +1,23 @@
 "use strict";
 
 /*
- * PoolGameRandomizer — declarative rule engine.
+ * PoolGameRandomizer — DOM layer.
+ *
+ * All game logic lives in engine.js (window.PGREngine); this file only wires it
+ * to the page: persistence, the spin animation, rendering, and the rule editor.
  *
  * A ruleset is a JSON document: { version, name, settings, rules[] }.
  * Each rule: { id, name, description, deck, weight, enabled, tags, effect }.
- * Rules can be added/edited at runtime (form or raw JSON), persisted to
- * localStorage, and exported/imported. The optional effect{} block carries
- * engine-real behaviors plus a customScript escape hatch for arbitrary logic.
- *
  * See README.md for the full schema.
  */
 
+const E = window.PGREngine;
 const STORAGE_KEY = "pgr.ruleset.v1";
 
-// Embedded default ruleset. Mirrors rules.default.json so the page works from
-// file:// (no fetch) as well as when hosted. Keep the two in sync.
-const DEFAULT_RULESET = {
-  version: 1,
-  name: "默认台球规则",
-  settings: {
-    specialDeckProbability: 0.05,
-    decayFactor: 0.6,
-    spinCount: 15,
-    spinIntervalMs: 80,
-  },
-  rules: [
-    {
-      id: "no-look",
-      name: "从不回头",
-      description: "强者，从不回头看爆炸。你需要背身击球",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["debuff"],
-      effect: {},
-    },
-    {
-      id: "payback",
-      name: "加倍奉还",
-      description:
-        "此效果将持续存在且不可叠加。【加倍奉还】生效的回合若出现犯规，则为该回合的效果赋予【复仇】标记。【加倍奉还】被清除时会解除当前场上所有的【复仇】标记。复仇：在【加倍奉还】生效的回合，被赋予【复仇】的效果将自动触发",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["persistent"],
-      effect: {
-        persistent: true,
-        stackable: false,
-        triggers: [{ on: "foul", action: "applyMark", mark: "复仇" }],
-      },
-    },
-    {
-      id: "ex-nihilo",
-      name: "无中生有",
-      description: "你打出一张【无中生有】，立即抽取两张牌，效果叠加",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["draw"],
-      effect: { extraDraws: 2, stackable: true },
-    },
-    {
-      id: "off-hand",
-      name: "非惯用手",
-      description: "使用非惯用手击球",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["debuff"],
-      effect: {},
-    },
-    {
-      id: "encore",
-      name: "故技重施",
-      description: "获得上一回合抽到的效果",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["meta"],
-      effect: { repeatLast: true },
-    },
-    {
-      id: "duality",
-      name: "两仪反转",
-      description:
-        "仅本回合，将黑八与母球互换，黑八视作母球，白球视作黑八。若出现犯规，则按犯规回合的母球结算自由球并按击球回合的母球击打",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["swap"],
-      effect: {},
-    },
-    {
-      id: "flawless",
-      name: "无懈可击",
-      description: "你打出一张【无懈可击】，清除所有效果，且本回合正常击球",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["cleanse"],
-      effect: { clearAllEffects: true },
-    },
-    {
-      id: "dragon-ball",
-      name: "天降龙珠",
-      description:
-        "仅本回合，将黑八视作【龙珠】。龙珠：一种可被任意玩家击打的目标球，若打进龙珠则【召唤神龙】。召唤神龙：神龙吞噬任意一颗己方目标球，并用黑八替代其位置，被神龙吞噬的球视作常规进球",
-      deck: "normal",
-      weight: 1,
-      enabled: true,
-      tags: ["special-ball"],
-      effect: {},
-    },
-    {
-      id: "secret-halo",
-      name: "秘奥义：杀戮光环",
-      description:
-        "秘奥义：立刻清除所有其余效果。杀戮光环：获得自由球并获得【裁决】。裁决：连杆时触发，下一回合抽牌后立即打出一张【无懈可击】，随后立即获得【裁决】",
-      deck: "special",
-      weight: 1,
-      enabled: true,
-      tags: ["ultimate", "persistent"],
-      effect: { clearAllEffects: true, persistent: true },
-    },
-    {
-      id: "secret-tap-dance",
-      name: "秘奥义：踢踏舞",
-      description:
-        "秘奥义：立刻清除所有其余效果。踢踏舞：此效果将持续存在，至多6回合；效果存在期间跳过抽卡阶段，且玩家必须在t=6秒内击球，随后t=t-1；若未能达成，则清除【踢踏舞】并记为犯规",
-      deck: "special",
-      weight: 1,
-      enabled: true,
-      tags: ["ultimate", "persistent"],
-      effect: {
-        clearAllEffects: true,
-        persistent: true,
-        maxTurns: 6,
-      },
-    },
-  ],
-};
+// Safety cap: a single draw sequence (the click plus any chained extra draws)
+// never runs more than this many spins, so a ruleset full of extraDraws can't
+// spin forever.
+const MAX_DRAWS_PER_SEQUENCE = 25;
 
 // ---------------------------------------------------------------------------
 // State
@@ -151,7 +28,7 @@ let weights = {}; // id -> current (decayed) weight
 let history = [];
 let activeEffects = []; // { uid, id, name, turnsLeft }
 let lastDrawn = null;
-let isDrawing = false;
+let drawSeqActive = false;
 let uidCounter = 0;
 
 // ---------------------------------------------------------------------------
@@ -177,12 +54,12 @@ function loadRuleset() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return normalizeRuleset(JSON.parse(raw));
+      return E.normalizeRuleset(JSON.parse(raw));
     }
   } catch (e) {
     console.warn("加载本地规则失败，使用默认规则", e);
   }
-  return normalizeRuleset(deepClone(DEFAULT_RULESET));
+  return E.normalizeRuleset(E.deepClone(E.DEFAULT_RULESET));
 }
 
 function saveRuleset() {
@@ -193,121 +70,49 @@ function saveRuleset() {
   }
 }
 
-function normalizeRuleset(rs) {
-  const out = {
-    version: rs.version || 1,
-    name: rs.name || "未命名规则",
-    settings: Object.assign(
-      {
-        specialDeckProbability: 0.05,
-        decayFactor: 0.6,
-        spinCount: 15,
-        spinIntervalMs: 80,
-      },
-      rs.settings || {},
-    ),
-    rules: (rs.rules || []).map((r, i) => ({
-      id: r.id || "rule-" + i + "-" + Math.random().toString(36).slice(2, 7),
-      name: r.name || "未命名",
-      description: r.description || "",
-      deck: r.deck === "special" ? "special" : "normal",
-      weight: typeof r.weight === "number" && r.weight >= 0 ? r.weight : 1,
-      enabled: r.enabled !== false,
-      tags: Array.isArray(r.tags) ? r.tags : [],
-      effect: r.effect && typeof r.effect === "object" ? r.effect : {},
-    })),
-  };
-  return out;
-}
-
-function deepClone(o) {
-  return JSON.parse(JSON.stringify(o));
-}
-
-// ---------------------------------------------------------------------------
-// Probability helpers
-// ---------------------------------------------------------------------------
-
-function resetWeights() {
-  weights = {};
-  for (const r of ruleset.rules) {
-    weights[r.id] = r.weight;
-  }
-}
-
-function enabledByDeck(deck) {
-  return ruleset.rules.filter((r) => r.enabled && r.deck === deck);
-}
-
-function sumWeights(rules) {
-  return rules.reduce((acc, r) => acc + (weights[r.id] ?? r.weight), 0);
-}
-
-// Display probability for each enabled rule, accounting for the special-deck split.
-function computeDisplayProbabilities() {
-  const specialP = clamp01(ruleset.settings.specialDeckProbability);
-  const normals = enabledByDeck("normal");
-  const specials = enabledByDeck("special");
-  const hasSpecial = specials.length > 0;
-  const normalShare = hasSpecial ? 1 - specialP : 1;
-  const specialShare = hasSpecial ? specialP : 0;
-  const nSum = sumWeights(normals) || 1;
-  const sSum = sumWeights(specials) || 1;
-  const rows = [];
-  for (const r of normals) {
-    rows.push({ rule: r, p: normalShare * ((weights[r.id] ?? r.weight) / nSum) });
-  }
-  for (const r of specials) {
-    rows.push({ rule: r, p: specialShare * ((weights[r.id] ?? r.weight) / sSum) });
-  }
-  return rows;
-}
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, Number(x) || 0));
-}
-
-function weightedPick(rules) {
-  const total = sumWeights(rules);
-  if (total <= 0) {
-    return rules[rules.length - 1];
-  }
-  let rand = Math.random() * total;
-  for (const r of rules) {
-    rand -= weights[r.id] ?? r.weight;
-    if (rand <= 0) {
-      return r;
-    }
-  }
-  return rules[rules.length - 1];
-}
-
 // ---------------------------------------------------------------------------
 // Draw + effect resolution
 // ---------------------------------------------------------------------------
 
-function resolveDraw() {
-  const normals = enabledByDeck("normal");
-  const specials = enabledByDeck("special");
-  const specialP = clamp01(ruleset.settings.specialDeckProbability);
-  const goSpecial = specials.length > 0 && Math.random() < specialP;
-  const pool = goSpecial ? specials : normals.length ? normals : specials;
-  if (!pool.length) {
-    return null;
-  }
-  return weightedPick(pool);
-}
-
-function drawEvent(isExtra) {
-  if (isDrawing && !isExtra) {
+// A click runs one "draw sequence": the primary draw plus any extra draws it
+// spawns, played one spin at a time so animations never overlap. The button
+// re-enables only when the whole sequence finishes.
+function startDrawSequence() {
+  if (drawSeqActive) {
     return;
   }
-  if (!isExtra) {
-    tickTurns(); // a top-level draw advances the turn counter
-  }
-  isDrawing = true;
+  drawSeqActive = true;
   drawButton.disabled = true;
+  tickTurns(); // a top-level draw advances the turn counter
 
+  let pending = 1; // the primary draw
+  let drawsDone = 0;
+
+  const runOne = () => {
+    if (pending <= 0 || drawsDone >= MAX_DRAWS_PER_SEQUENCE) {
+      drawSeqActive = false;
+      drawButton.disabled = false;
+      return;
+    }
+    pending--;
+    drawsDone++;
+    spin((chosen) => {
+      let extra = 0;
+      if (chosen) {
+        extra = applyRule(chosen);
+      }
+      pending += Math.max(0, extra);
+      // Extra draws get a short beat so the player can read each result.
+      const beat = extra > 0 ? (ruleset.settings.extraDrawDelayMs ?? 700) : 0;
+      setTimeout(runOne, beat);
+    });
+  };
+
+  runOne();
+}
+
+// Run one slot-machine spin, then hand the resolved rule to `done`.
+function spin(done) {
   const settings = ruleset.settings;
   const allEnabled = ruleset.rules.filter((r) => r.enabled);
   let count = 0;
@@ -321,20 +126,23 @@ function drawEvent(isExtra) {
     if (++count >= settings.spinCount) {
       clearInterval(interval);
       resultEl.classList.remove("spinning");
-      const chosen = resolveDraw();
-      if (chosen) {
-        applyRule(chosen);
-      }
-      isDrawing = false;
-      drawButton.disabled = false;
+      done(E.resolveDraw(ruleset, weights, Math.random));
     }
   }, settings.spinIntervalMs);
 }
 
+// Extra draws requested by the current rule's customScript via ctx.drawAgain().
+// Accumulated during applyRule and folded into its return value so the draw
+// sequence chains them without overlapping animations.
+let scriptExtraDraws = 0;
+
+// Apply a drawn rule's effects/rendering. Returns the number of extra draws it
+// requests, so the caller (startDrawSequence) can chain them without overlap.
 function applyRule(rule) {
   resultEl.textContent = rule.name;
   descriptionEl.textContent = rule.description;
   const eff = rule.effect || {};
+  scriptExtraDraws = 0;
 
   if (eff.clearAllEffects) {
     clearEffects();
@@ -352,20 +160,13 @@ function applyRule(rule) {
 
   runCustomScript(rule);
 
-  // Decay: a drawn normal rule becomes less likely next time.
-  if (rule.deck === "normal") {
-    weights[rule.id] = (weights[rule.id] ?? rule.weight) * ruleset.settings.decayFactor;
-  }
+  E.applyDecay(weights, rule, ruleset.settings.decayFactor);
 
   addHistory(rule);
   lastDrawn = rule;
   renderProbabilities();
 
-  // Extra draws happen after a short beat so the player can read each result.
-  const extra = Number(eff.extraDraws) || 0;
-  if (extra > 0 && !applyRule._extraGuard) {
-    queueExtraDraws(extra);
-  }
+  return (Number(eff.extraDraws) || 0) + scriptExtraDraws;
 }
 
 // Re-apply only the persistent/engine side of an effect (used by repeatLast).
@@ -379,37 +180,16 @@ function applyEffectOnly(rule) {
   }
 }
 
-function queueExtraDraws(n) {
-  let remaining = n;
-  const step = () => {
-    if (remaining <= 0) {
-      return;
-    }
-    remaining--;
-    setTimeout(() => {
-      drawEvent(true);
-      step();
-    }, 700);
-  };
-  step();
-}
-
 // ---------------------------------------------------------------------------
 // Active (persistent) effects
 // ---------------------------------------------------------------------------
 
 function addEffectChip(rule) {
-  const eff = rule.effect || {};
-  if (!eff.stackable && activeEffects.some((a) => a.id === rule.id)) {
-    return; // non-stackable: already active
+  const before = activeEffects.length;
+  E.addEffect(activeEffects, rule, uidCounter + 1);
+  if (activeEffects.length > before) {
+    uidCounter++;
   }
-  const entry = {
-    uid: ++uidCounter,
-    id: rule.id,
-    name: rule.name,
-    turnsLeft: Number.isFinite(eff.maxTurns) ? eff.maxTurns : null,
-  };
-  activeEffects.push(entry);
   renderActiveEffects();
 }
 
@@ -426,16 +206,11 @@ function clearEffects() {
   renderActiveEffects();
 }
 
-// At the start of each top-level draw, persistent effects with a turn budget tick down.
+// At the start of each top-level draw, persistent effects with a turn budget
+// tick down and expire.
 function tickTurns() {
-  for (const a of [...activeEffects]) {
-    if (a.turnsLeft != null) {
-      a.turnsLeft--;
-      if (a.turnsLeft <= 0) {
-        removeEffect(a.uid);
-      }
-    }
-  }
+  const { effects } = E.tickEffects(activeEffects);
+  activeEffects = effects;
   renderActiveEffects();
 }
 
@@ -450,7 +225,9 @@ function makeCtx(rule) {
     addEffect: (r) => addEffectChip(r || rule),
     removeEffect: (uid) => removeEffect(uid),
     clearEffects: () => clearEffects(),
-    drawAgain: (n) => queueExtraDraws(Number(n) || 1),
+    drawAgain: (n) => {
+      scriptExtraDraws += Math.max(0, Number(n) || 1);
+    },
     log: (msg) => {
       descriptionEl.textContent += "\n› " + msg;
     },
@@ -489,7 +266,7 @@ function addHistory(rule) {
 // ---------------------------------------------------------------------------
 
 function renderProbabilities() {
-  const rows = computeDisplayProbabilities();
+  const rows = E.computeDisplayProbabilities(ruleset, weights);
   probabilitiesTable.innerHTML = "";
   for (const { rule, p } of rows) {
     const tr = document.createElement("tr");
@@ -538,7 +315,9 @@ function renderActiveEffects() {
     }
     chip.innerHTML =
       "<span>" + escapeHtml(label) + '</span><span class="chip-x">✕</span>';
-    chip.querySelector(".chip-x").addEventListener("click", () => removeEffect(a.uid));
+    chip
+      .querySelector(".chip-x")
+      .addEventListener("click", () => removeEffect(a.uid));
     activeEffectsEl.appendChild(chip);
   }
 }
@@ -547,7 +326,9 @@ function escapeHtml(s) {
   return String(s).replace(
     /[&<>"']/g,
     (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
   );
 }
 
@@ -573,7 +354,9 @@ function buildRuleRow(rule) {
     eff.maxTurns != null ? eff.maxTurns : "";
   root.querySelector(".eff-script").value = eff.customScript || "";
   root.dataset.id = rule.id;
-  root.querySelector(".rule-delete").addEventListener("click", () => root.remove());
+  root
+    .querySelector(".rule-delete")
+    .addEventListener("click", () => root.remove());
   return root;
 }
 
@@ -617,7 +400,7 @@ function collectFromForm() {
       effect,
     });
   }
-  return normalizeRuleset({
+  return E.normalizeRuleset({
     version: ruleset.version,
     name: ruleset.name,
     settings: Object.assign({}, ruleset.settings, {
@@ -630,7 +413,7 @@ function collectFromForm() {
 
 function applyNewRuleset(rs, persist) {
   ruleset = rs;
-  resetWeights();
+  weights = E.resetWeights(ruleset.rules);
   if (persist) {
     saveRuleset();
   }
@@ -643,15 +426,15 @@ function applyNewRuleset(rs, persist) {
 // ---------------------------------------------------------------------------
 
 function init() {
-  resetWeights();
+  weights = E.resetWeights(ruleset.rules);
   renderProbabilities();
   renderHistory();
   renderActiveEffects();
 
-  drawButton.addEventListener("click", () => drawEvent(false));
+  drawButton.addEventListener("click", () => startDrawSequence());
 
   resetButton.addEventListener("click", () => {
-    resetWeights();
+    weights = E.resetWeights(ruleset.rules);
     clearEffects();
     history = [];
     lastDrawn = null;
@@ -706,7 +489,7 @@ function init() {
 
   el("applyJsonButton").addEventListener("click", () => {
     try {
-      const parsed = normalizeRuleset(JSON.parse(el("jsonEditor").value));
+      const parsed = E.normalizeRuleset(JSON.parse(el("jsonEditor").value));
       applyNewRuleset(parsed, true);
       flashStatus("JSON 已生效 ✓", true);
     } catch (e) {
@@ -734,7 +517,7 @@ function init() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        applyNewRuleset(normalizeRuleset(JSON.parse(reader.result)), true);
+        applyNewRuleset(E.normalizeRuleset(JSON.parse(reader.result)), true);
         flashStatus("已导入 ✓", true);
       } catch (e) {
         flashStatus("导入失败：" + e.message, false);
@@ -745,7 +528,7 @@ function init() {
 
   el("restoreDefaultButton").addEventListener("click", () => {
     if (confirm("恢复默认规则？当前自定义规则将被覆盖。")) {
-      applyNewRuleset(normalizeRuleset(deepClone(DEFAULT_RULESET)), true);
+      applyNewRuleset(E.normalizeRuleset(E.deepClone(E.DEFAULT_RULESET)), true);
       flashStatus("已恢复默认 ✓", true);
     }
   });

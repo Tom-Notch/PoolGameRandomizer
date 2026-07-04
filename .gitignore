@@ -664,3 +664,6 @@ TSWLatexianTemp*
 *.glstex
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,c++,python,jupyternotebooks,ros,ros2,matlab,git
+
+# Node
+node_modules/

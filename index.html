@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -66,12 +66,7 @@
               /></label>
               <label class="inline"
                 >衰减系数
-                <input
-                  type="number"
-                  id="setDecay"
-                  step="0.05"
-                  min="0"
-                  max="1"
+                <input type="number" id="setDecay" step="0.05" min="0" max="1"
               /></label>
             </div>
           </div>
@@ -79,7 +74,9 @@
           <div class="form-group">
             <div class="rules-header">
               <label>规则列表</label>
-              <button id="addRuleButton" class="small-button">+ 新增规则</button>
+              <button id="addRuleButton" class="small-button">
+                + 新增规则
+              </button>
             </div>
             <div id="rulesEditorList"></div>
           </div>
@@ -96,10 +93,14 @@
         </section>
 
         <div class="editor-actions">
-          <button id="saveRulesButton" class="default-button">保存并生效</button>
+          <button id="saveRulesButton" class="default-button">
+            保存并生效
+          </button>
           <button id="exportButton" class="small-button">导出 JSON</button>
           <button id="importButton" class="small-button">导入 JSON</button>
-          <button id="restoreDefaultButton" class="small-button">恢复默认</button>
+          <button id="restoreDefaultButton" class="small-button">
+            恢复默认
+          </button>
           <input
             type="file"
             id="importFile"
@@ -129,7 +130,9 @@
           <label class="inline checkbox"
             ><input type="checkbox" class="rule-enabled" /> 启用</label
           >
-          <button class="rule-delete small-button danger" title="删除">✕</button>
+          <button class="rule-delete small-button danger" title="删除">
+            ✕
+          </button>
         </div>
         <textarea
           class="rule-desc"
@@ -152,8 +155,7 @@
               ><input type="checkbox" class="eff-repeat" /> 重复上一张</label
             >
             <label class="inline"
-              >额外抽牌
-              <input class="eff-extra" type="number" min="0" step="1"
+              >额外抽牌 <input class="eff-extra" type="number" min="0" step="1"
             /></label>
             <label class="inline"
               >持续回合
@@ -161,7 +163,8 @@
             /></label>
           </div>
           <label class="block"
-            >customScript （高级：<code>(ctx) =&gt; { ... }</code> 函数体，留空则不用）
+            >customScript （高级：<code>(ctx) =&gt; { ... }</code>
+            函数体，留空则不用）
             <textarea
               class="eff-script"
               rows="3"
@@ -173,6 +176,7 @@
       </div>
     </template>
 
+    <script src="engine.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
