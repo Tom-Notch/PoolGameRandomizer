@@ -25,6 +25,7 @@
     decayFactor: 0.6,
     spinCount: 15,
     spinIntervalMs: 80,
+    extraDrawDelayMs: 700, // beat between chained extra draws
   };
 
   // Canonical default ruleset. rules.default.json mirrors this for hosted

@@ -104,6 +104,7 @@ test("app.js: init and a draw sequence run without throwing and re-enable the bu
       decayFactor: 0.6,
       spinCount: 1,
       spinIntervalMs: 1,
+      extraDrawDelayMs: 0, // chain extras immediately so the test is deterministic
     },
     rules: [
       { id: "plain", name: "Plain", deck: "normal", weight: 1, effect: {} },

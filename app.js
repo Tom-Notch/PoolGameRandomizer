@@ -103,7 +103,8 @@ function startDrawSequence() {
       }
       pending += Math.max(0, extra);
       // Extra draws get a short beat so the player can read each result.
-      setTimeout(runOne, extra > 0 ? 700 : 0);
+      const beat = extra > 0 ? (ruleset.settings.extraDrawDelayMs ?? 700) : 0;
+      setTimeout(runOne, beat);
     });
   };
 
