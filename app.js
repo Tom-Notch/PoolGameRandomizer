@@ -132,12 +132,11 @@ const DEFAULT_RULESET = {
       deck: "special",
       weight: 1,
       enabled: true,
-      tags: ["ultimate", "persistent", "timer"],
+      tags: ["ultimate", "persistent"],
       effect: {
         clearAllEffects: true,
         persistent: true,
         maxTurns: 6,
-        timerSeconds: 6,
       },
     },
   ],
@@ -150,7 +149,7 @@ const DEFAULT_RULESET = {
 let ruleset = loadRuleset();
 let weights = {}; // id -> current (decayed) weight
 let history = [];
-let activeEffects = []; // { uid, id, name, turnsLeft, timerLeft, timerHandle }
+let activeEffects = []; // { uid, id, name, turnsLeft }
 let lastDrawn = null;
 let isDrawing = false;
 let uidCounter = 0;
@@ -409,19 +408,7 @@ function addEffectChip(rule) {
     id: rule.id,
     name: rule.name,
     turnsLeft: Number.isFinite(eff.maxTurns) ? eff.maxTurns : null,
-    timerLeft: Number.isFinite(eff.timerSeconds) ? eff.timerSeconds : null,
-    timerHandle: null,
   };
-  if (entry.timerLeft != null) {
-    entry.timerHandle = setInterval(() => {
-      entry.timerLeft--;
-      if (entry.timerLeft <= 0) {
-        removeEffect(entry.uid);
-      } else {
-        renderActiveEffects();
-      }
-    }, 1000);
-  }
   activeEffects.push(entry);
   renderActiveEffects();
 }
@@ -429,20 +416,12 @@ function addEffectChip(rule) {
 function removeEffect(uid) {
   const idx = activeEffects.findIndex((a) => a.uid === uid);
   if (idx >= 0) {
-    if (activeEffects[idx].timerHandle) {
-      clearInterval(activeEffects[idx].timerHandle);
-    }
     activeEffects.splice(idx, 1);
     renderActiveEffects();
   }
 }
 
 function clearEffects() {
-  for (const a of activeEffects) {
-    if (a.timerHandle) {
-      clearInterval(a.timerHandle);
-    }
-  }
   activeEffects = [];
   renderActiveEffects();
 }
@@ -557,9 +536,6 @@ function renderActiveEffects() {
     if (a.turnsLeft != null) {
       label += " · " + a.turnsLeft + "回合";
     }
-    if (a.timerLeft != null) {
-      label += " · ⏱" + a.timerLeft + "s";
-    }
     chip.innerHTML =
       "<span>" + escapeHtml(label) + '</span><span class="chip-x">✕</span>';
     chip.querySelector(".chip-x").addEventListener("click", () => removeEffect(a.uid));
@@ -595,8 +571,6 @@ function buildRuleRow(rule) {
   root.querySelector(".eff-extra").value = eff.extraDraws || "";
   root.querySelector(".eff-maxturns").value =
     eff.maxTurns != null ? eff.maxTurns : "";
-  root.querySelector(".eff-timer").value =
-    eff.timerSeconds != null ? eff.timerSeconds : "";
   root.querySelector(".eff-script").value = eff.customScript || "";
   root.dataset.id = rule.id;
   root.querySelector(".rule-delete").addEventListener("click", () => root.remove());
@@ -630,8 +604,6 @@ function collectFromForm() {
     if (extra > 0) effect.extraDraws = extra;
     const mt = parseInt(row.querySelector(".eff-maxturns").value, 10);
     if (mt > 0) effect.maxTurns = mt;
-    const ts = parseInt(row.querySelector(".eff-timer").value, 10);
-    if (ts > 0) effect.timerSeconds = ts;
     const script = row.querySelector(".eff-script").value.trim();
     if (script) effect.customScript = script;
     rules.push({
