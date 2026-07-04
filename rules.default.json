@@ -140,20 +140,18 @@
         {
             "id": "secret-tap-dance",
             "name": "秘奥义：踢踏舞",
-            "description": "秘奥义：立刻清除所有其余效果。踢踏舞：此效果将持续存在，至多6回合；效果存在期间跳过抽卡阶段，且玩家必须在t=6秒内击球，随后t=t-1；若未能达成，则清除【踢踏舞】并记为犯规",
+            "description": "秘奥义：立刻清除所有其余效果。踢踏舞：此效果将持续存在，至多6回合；效果存在期间跳过抽卡阶段，超过6回合后清除【踢踏舞】。",
             "deck": "special",
             "weight": 1,
             "enabled": true,
             "tags": [
                 "ultimate",
-                "persistent",
-                "timer"
+                "persistent"
             ],
             "effect": {
                 "clearAllEffects": true,
                 "persistent": true,
-                "maxTurns": 6,
-                "timerSeconds": 6
+                "maxTurns": 6
             }
         }
     ]
