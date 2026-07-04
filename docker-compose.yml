@@ -1,0 +1,9 @@
+name: pool-game-randomizer
+
+services:
+  pgr:
+    build: .
+    container_name: pgr
+    ports:
+      - "3001:80"
+    restart: unless-stopped
