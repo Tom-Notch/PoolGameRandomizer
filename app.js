@@ -11,7 +11,9 @@
  * See README.md for the full schema.
  */
 
-const E = window.PGREngine;
+// Resolved once the engine is present. app.js must not touch E until boot()
+// has confirmed window.PGREngine is loaded — see the bootstrap at the bottom.
+let E = window.PGREngine;
 const STORAGE_KEY = "pgr.ruleset.v1";
 
 // Safety cap: a single draw sequence (the click plus any chained extra draws)
@@ -23,7 +25,7 @@ const MAX_DRAWS_PER_SEQUENCE = 25;
 // State
 // ---------------------------------------------------------------------------
 
-let ruleset = loadRuleset();
+let ruleset; // loaded in init(), once the engine is guaranteed present
 let weights = {}; // id -> current (decayed) weight
 let history = [];
 let activeEffects = []; // { uid, id, name, turnsLeft }
@@ -426,6 +428,7 @@ function applyNewRuleset(rs, persist) {
 // ---------------------------------------------------------------------------
 
 function init() {
+  ruleset = loadRuleset();
   weights = E.resetWeights(ruleset.rules);
   renderProbabilities();
   renderHistory();
@@ -544,4 +547,32 @@ function flashStatus(msg, ok) {
   }, 4000);
 }
 
-document.addEventListener("DOMContentLoaded", init);
+// Bootstrap. app.js depends on engine.js (window.PGREngine). A browser holding
+// a stale, cached index.html from before the engine.js split would load app.js
+// without engine.js — so rather than crash into a blank page, we load engine.js
+// on demand, then init. This makes app.js resilient to HTML caching.
+function boot() {
+  E = window.PGREngine;
+  init();
+}
+
+function whenEngineReady(cb) {
+  if (window.PGREngine) {
+    cb();
+    return;
+  }
+  const s = document.createElement("script");
+  s.src = "engine.js";
+  s.onload = cb;
+  document.head.appendChild(s);
+}
+
+function bootstrap() {
+  whenEngineReady(boot);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrap);
+} else {
+  bootstrap();
+}

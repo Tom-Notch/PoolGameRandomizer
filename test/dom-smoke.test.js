@@ -63,21 +63,33 @@ class El {
   remove() {}
 }
 
-function installDom(storedRuleset) {
+function installDom(storedRuleset, { withEngine = true } = {}) {
   const byId = {};
   const el = (id) => (byId[id] ||= new El());
   // editorPanel toggling reads style.display; keep it hidden.
   el("editorPanel").style.display = "none";
 
+  global.window = withEngine ? { PGREngine: require("../engine.js") } : {};
+
   global.document = {
+    readyState: "loading", // so app.js registers its DOMContentLoaded bootstrap
     getElementById: el,
     querySelectorAll: () => [],
     createElement: (t) => new El(t),
+    // Simulate a <script src="engine.js"> injection: load the engine and fire onload,
+    // which is how app.js self-heals from a stale index.html that lacks engine.js.
+    head: {
+      appendChild: (node) => {
+        if (node && node.src === "engine.js") {
+          global.window.PGREngine = require("../engine.js");
+          if (typeof node.onload === "function") node.onload();
+        }
+      },
+    },
     addEventListener: (ev, fn) => {
       if (ev === "DOMContentLoaded") global.__domReady = fn;
     },
   };
-  global.window = { PGREngine: require("../engine.js") };
   const store = {};
   if (storedRuleset) {
     store["pgr.ruleset.v1"] = JSON.stringify(storedRuleset);
@@ -135,4 +147,35 @@ test("app.js: init and a draw sequence run without throwing and re-enable the bu
 
   assert.equal(drawButton.disabled, false, "button re-enabled after sequence");
   assert.ok(resultEl.textContent.length > 0, "a result was rendered");
+});
+
+test("app.js self-heals from a stale index.html that never loaded engine.js", () => {
+  // Simulate Tom's bug: a cached index.html loads app.js WITHOUT engine.js
+  // (window.PGREngine is undefined). app.js must inject engine.js and still
+  // render the stored ruleset — not crash into a blank page.
+  const { el } = installDom(
+    {
+      version: 1,
+      name: "stale-cache",
+      settings: { specialDeckProbability: 0 },
+      rules: [
+        { id: "r1", name: "Rule One", deck: "normal", weight: 1 },
+        { id: "r2", name: "Rule Two", deck: "normal", weight: 1 },
+      ],
+    },
+    { withEngine: false },
+  );
+  assert.equal(global.window.PGREngine, undefined, "engine absent at load");
+
+  delete require.cache[require.resolve(path.join(__dirname, "..", "app.js"))];
+  require("../app.js");
+  assert.equal(typeof global.__domReady, "function", "bootstrap wired");
+  global.__domReady(); // bootstrap -> loads engine.js -> init()
+
+  assert.ok(global.window.PGREngine, "engine was injected on demand");
+  const table = el("probabilitiesTable");
+  assert.ok(
+    table.children.length >= 2,
+    "stored rules rendered after self-heal (not a blank page)",
+  );
 });
