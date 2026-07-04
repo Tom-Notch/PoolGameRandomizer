@@ -63,13 +63,24 @@ class El {
   remove() {}
 }
 
-function installDom(storedRuleset, { withEngine = true } = {}) {
+function installDom(defaultRuleset, { withEngine = true } = {}) {
   const byId = {};
   const el = (id) => (byId[id] ||= new El());
   // editorPanel toggling reads style.display; keep it hidden.
   el("editorPanel").style.display = "none";
 
-  global.window = withEngine ? { PGREngine: require("../engine.js") } : {};
+  // The app has no persistence — it always loads E.DEFAULT_RULESET. To drive a
+  // specific ruleset in the test, override the engine's default. (node --test
+  // runs each file in its own process, so this doesn't leak into engine.test.js.)
+  const loadEngine = () => {
+    const eng = require("../engine.js");
+    if (defaultRuleset) {
+      eng.DEFAULT_RULESET = defaultRuleset;
+    }
+    return eng;
+  };
+
+  global.window = withEngine ? { PGREngine: loadEngine() } : {};
 
   global.document = {
     readyState: "loading", // so app.js registers its DOMContentLoaded bootstrap
@@ -81,7 +92,7 @@ function installDom(storedRuleset, { withEngine = true } = {}) {
     head: {
       appendChild: (node) => {
         if (node && node.src === "engine.js") {
-          global.window.PGREngine = require("../engine.js");
+          global.window.PGREngine = loadEngine();
           if (typeof node.onload === "function") node.onload();
         }
       },
@@ -90,14 +101,15 @@ function installDom(storedRuleset, { withEngine = true } = {}) {
       if (ev === "DOMContentLoaded") global.__domReady = fn;
     },
   };
+  // Storage stub: the app only ever calls removeItem now (no persistence).
   const store = {};
-  if (storedRuleset) {
-    store["pgr.ruleset.v1"] = JSON.stringify(storedRuleset);
-  }
   global.localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
     setItem: (k, v) => {
       store[k] = v;
+    },
+    removeItem: (k) => {
+      delete store[k];
     },
   };
   return { byId, el };
@@ -150,9 +162,9 @@ test("app.js: init and a draw sequence run without throwing and re-enable the bu
 });
 
 test("app.js self-heals from a stale index.html that never loaded engine.js", () => {
-  // Simulate Tom's bug: a cached index.html loads app.js WITHOUT engine.js
+  // Simulate the cache bug: a cached index.html loads app.js WITHOUT engine.js
   // (window.PGREngine is undefined). app.js must inject engine.js and still
-  // render the stored ruleset — not crash into a blank page.
+  // render the default ruleset — not crash into a blank page.
   const { el } = installDom(
     {
       version: 1,
@@ -176,6 +188,35 @@ test("app.js self-heals from a stale index.html that never loaded engine.js", ()
   const table = el("probabilitiesTable");
   assert.ok(
     table.children.length >= 2,
-    "stored rules rendered after self-heal (not a blank page)",
+    "default rules rendered after self-heal (not a blank page)",
   );
+});
+
+test("no persistence: loading clears any stored ruleset and never writes one", () => {
+  installDom({
+    version: 1,
+    name: "no-persist",
+    settings: { specialDeckProbability: 0 },
+    rules: [{ id: "r1", name: "R1", deck: "normal", weight: 1 }],
+  });
+  // Simulate a ruleset left behind by an older, persisting version.
+  global.localStorage.setItem("pgr.ruleset.v1", JSON.stringify({ rules: [] }));
+  // Trip a write if the app ever tries to persist.
+  let wroteRuleset = false;
+  const rawSet = global.localStorage.setItem;
+  global.localStorage.setItem = (k, v) => {
+    if (k === "pgr.ruleset.v1") wroteRuleset = true;
+    rawSet(k, v);
+  };
+
+  delete require.cache[require.resolve(path.join(__dirname, "..", "app.js"))];
+  require("../app.js");
+  global.__domReady();
+
+  assert.equal(
+    global.localStorage.getItem("pgr.ruleset.v1"),
+    null,
+    "existing stored ruleset was cleared on load",
+  );
+  assert.equal(wroteRuleset, false, "load never persists a ruleset");
 });

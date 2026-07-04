@@ -49,27 +49,21 @@ const historyContainer = el("historyContainer");
 const activeEffectsEl = el("activeEffects");
 
 // ---------------------------------------------------------------------------
-// Persistence
+// Loading — no local persistence
 // ---------------------------------------------------------------------------
+//
+// By design the app keeps nothing on the device: every load starts fresh from
+// the default ruleset, and a page refresh resets everything. Edits/imports
+// apply only to the current session. We also proactively delete any ruleset a
+// previous (persisting) version left in localStorage, so nothing lingers.
 
 function loadRuleset() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      return E.normalizeRuleset(JSON.parse(raw));
-    }
+    localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn("加载本地规则失败，使用默认规则", e);
+    // ignore — storage may be unavailable
   }
   return E.normalizeRuleset(E.deepClone(E.DEFAULT_RULESET));
-}
-
-function saveRuleset() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ruleset));
-  } catch (e) {
-    console.warn("保存规则失败", e);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -413,12 +407,10 @@ function collectFromForm() {
   });
 }
 
-function applyNewRuleset(rs, persist) {
+// Apply a ruleset to the current session (not persisted — resets on refresh).
+function applyNewRuleset(rs) {
   ruleset = rs;
   weights = E.resetWeights(ruleset.rules);
-  if (persist) {
-    saveRuleset();
-  }
   renderProbabilities();
   renderEditor();
 }
@@ -486,15 +478,15 @@ function init() {
   });
 
   el("saveRulesButton").addEventListener("click", () => {
-    applyNewRuleset(collectFromForm(), true);
-    flashStatus("已保存并生效 ✓", true);
+    applyNewRuleset(collectFromForm());
+    flashStatus("已生效（刷新后重置）✓", true);
   });
 
   el("applyJsonButton").addEventListener("click", () => {
     try {
       const parsed = E.normalizeRuleset(JSON.parse(el("jsonEditor").value));
-      applyNewRuleset(parsed, true);
-      flashStatus("JSON 已生效 ✓", true);
+      applyNewRuleset(parsed);
+      flashStatus("JSON 已生效（刷新后重置）✓", true);
     } catch (e) {
       flashStatus("JSON 解析失败：" + e.message, false);
     }
@@ -520,8 +512,8 @@ function init() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        applyNewRuleset(E.normalizeRuleset(JSON.parse(reader.result)), true);
-        flashStatus("已导入 ✓", true);
+        applyNewRuleset(E.normalizeRuleset(JSON.parse(reader.result)));
+        flashStatus("已导入（刷新后重置）✓", true);
       } catch (e) {
         flashStatus("导入失败：" + e.message, false);
       }
@@ -531,7 +523,7 @@ function init() {
 
   el("restoreDefaultButton").addEventListener("click", () => {
     if (confirm("恢复默认规则？当前自定义规则将被覆盖。")) {
-      applyNewRuleset(E.normalizeRuleset(E.deepClone(E.DEFAULT_RULESET)), true);
+      applyNewRuleset(E.normalizeRuleset(E.deepClone(E.DEFAULT_RULESET)));
       flashStatus("已恢复默认 ✓", true);
     }
   });
